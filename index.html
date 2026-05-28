@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attaques de DAB en Suisse · 2019 →</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0c0e13; --panel:#12151c; --panel2:#171b24; --line:#262c38;
+  --ink:#e8ecf4; --muted:#8a93a6; --dim:#5b6374;
+  --exp:#ff4d2e; --explo:#ff7a1a; --gaz:#2ee6c5; --elec:#ffd23f;
+  --eff:#5b9eff; --lasso:#b06bff; --feu:#ff5fa2; --autre:#8a93a6;
+  --accent:#ff4d2e;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",sans-serif;overflow:hidden}
+.mono{font-family:"IBM Plex Mono",monospace}
+#app{display:grid;grid-template-columns:312px 1fr;grid-template-rows:1fr;height:100vh}
+
+/* ---- Sidebar ---- */
+#side{background:var(--panel);border-right:1px solid var(--line);
+  display:flex;flex-direction:column;overflow:hidden}
+#brand{padding:18px 18px 14px;border-bottom:1px solid var(--line)}
+#brand h1{font-family:"Archivo";font-weight:900;font-size:21px;line-height:1.0;
+  letter-spacing:-.5px;margin:0 0 6px;text-transform:uppercase}
+#brand h1 b{color:var(--accent)}
+#brand p{margin:0;font-size:11.5px;color:var(--muted);line-height:1.45}
+#stats{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+  border-bottom:1px solid var(--line)}
+.stat{background:var(--panel);padding:11px 14px}
+.stat .n{font-family:"Archivo";font-weight:800;font-size:23px;line-height:1}
+.stat .l{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin-top:3px}
+#filters{flex:1;overflow-y:auto;padding:6px 0 80px}
+.fgroup{padding:14px 16px;border-bottom:1px solid var(--line)}
+.fgroup h3{margin:0 0 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:1px;
+  color:var(--muted);font-weight:600;display:flex;justify-content:space-between}
+.opt{display:flex;align-items:center;gap:9px;padding:4px 0;cursor:pointer;font-size:12.5px;
+  user-select:none;color:var(--ink)}
+.opt:hover{color:#fff}
+.opt input{display:none}
+.box{width:14px;height:14px;border:1.5px solid var(--dim);border-radius:3px;flex:none;
+  display:grid;place-items:center;transition:.12s}
+.opt input:checked+.box{background:var(--accent);border-color:var(--accent)}
+.opt input:checked+.box::after{content:"";width:6px;height:6px;background:#0c0e13;border-radius:1px}
+.sw{width:9px;height:9px;border-radius:50%;flex:none}
+.cnt{margin-left:auto;font-family:"IBM Plex Mono";font-size:11px;color:var(--dim)}
+.opt.off{opacity:.4}
+#reset{margin:14px 16px;padding:9px;width:calc(100% - 32px);background:transparent;
+  border:1px solid var(--line);color:var(--muted);border-radius:7px;cursor:pointer;
+  font-family:"IBM Plex Mono";font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+#reset:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---- Map ---- */
+#mapwrap{position:relative}
+#map{position:absolute;inset:0;background:#0c0e13}
+.leaflet-container{background:#0c0e13;font-family:"IBM Plex Sans"}
+.leaflet-popup-content-wrapper{background:var(--panel2);color:var(--ink);
+  border:1px solid var(--line);border-radius:10px;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.leaflet-popup-tip{background:var(--panel2);border:1px solid var(--line)}
+.leaflet-popup-content{margin:13px 15px;font-size:12.5px;line-height:1.5;width:248px!important}
+.pop-h{font-family:"Archivo";font-weight:800;font-size:15px;letter-spacing:-.2px;margin-bottom:2px}
+.pop-d{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted);margin-bottom:9px}
+.pop-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}
+.tag{font-size:10px;padding:2px 7px;border-radius:20px;font-family:"IBM Plex Mono";
+  border:1px solid var(--line)}
+.tag.r{background:rgba(46,230,197,.13);color:#2ee6c5;border-color:transparent}
+.tag.t{background:rgba(255,210,63,.13);color:#ffd23f;border-color:transparent}
+.pop-c{color:var(--muted);font-size:11.5px;border-top:1px solid var(--line);padding-top:8px}
+.pop-c a{color:var(--accent);text-decoration:none}
+.approx{position:absolute;left:50%;transform:translateX(-50%);top:14px;z-index:500;
+  background:rgba(18,21,28,.9);border:1px solid var(--line);border-radius:20px;
+  padding:6px 14px;font-size:11px;color:var(--muted);font-family:"IBM Plex Mono";
+  backdrop-filter:blur(6px)}
+.approx b{color:var(--elec)}
+
+/* ---- Timeline ---- */
+#tl{position:absolute;left:18px;right:18px;bottom:18px;z-index:600;
+  background:rgba(15,17,23,.93);border:1px solid var(--line);border-radius:14px;
+  padding:13px 18px 15px;backdrop-filter:blur(10px);box-shadow:0 16px 50px rgba(0,0,0,.55)}
+#tl-top{display:flex;align-items:center;gap:14px;margin-bottom:9px}
+#play{width:34px;height:34px;border-radius:50%;border:none;background:var(--accent);
+  color:#0c0e13;cursor:pointer;flex:none;display:grid;place-items:center;font-size:13px}
+#play:hover{filter:brightness(1.1)}
+#tl-date{font-family:"Archivo";font-weight:800;font-size:18px;letter-spacing:-.3px}
+#tl-info{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted)}
+#mode{margin-left:auto;display:flex;gap:0;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+#mode button{background:transparent;border:none;color:var(--muted);padding:6px 11px;
+  font-family:"IBM Plex Mono";font-size:10.5px;cursor:pointer;text-transform:uppercase;letter-spacing:.4px}
+#mode button.on{background:var(--accent);color:#0c0e13}
+#hist{display:flex;align-items:flex-end;gap:1px;height:34px;margin-bottom:6px}
+.bar{flex:1;background:var(--line);border-radius:1px 1px 0 0;min-height:2px;transition:.15s}
+.bar.act{background:var(--accent)}
+#slider{width:100%;-webkit-appearance:none;height:4px;border-radius:3px;
+  background:var(--line);outline:none;cursor:pointer;margin:0}
+#slider::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);cursor:pointer;border:3px solid var(--bg);box-shadow:0 0 0 1px var(--accent)}
+#slider::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--accent);
+  border:3px solid var(--bg);cursor:pointer}
+#tl-ticks{display:flex;justify-content:space-between;margin-top:5px;
+  font-family:"IBM Plex Mono";font-size:9.5px;color:var(--dim)}
+.leaflet-control-zoom a{background:var(--panel2)!important;color:var(--ink)!important;
+  border-color:var(--line)!important}
+
+/* ---- Stats button + panel ---- */
+#statsBtn{margin:12px 16px 2px;width:calc(100% - 32px);padding:10px;background:var(--accent);
+  border:none;color:#0c0e13;border-radius:8px;cursor:pointer;font-family:"IBM Plex Mono";
+  font-size:11.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:600;display:flex;
+  align-items:center;justify-content:center;gap:7px}
+#statsBtn:hover{filter:brightness(1.08)}
+#statsPanel{position:absolute;inset:0;z-index:1000;background:rgba(8,9,13,.72);
+  backdrop-filter:blur(4px);display:none;opacity:0;transition:opacity .2s}
+#statsPanel.open{display:block;opacity:1}
+#statsCard{position:absolute;top:0;right:0;height:100%;width:min(560px,92%);
+  background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;
+  transform:translateX(40px);transition:transform .25s;box-shadow:-20px 0 60px rgba(0,0,0,.5)}
+#statsPanel.open #statsCard{transform:none}
+#statsCard header{position:sticky;top:0;background:var(--panel);z-index:2;
+  padding:20px 24px 16px;border-bottom:1px solid var(--line);display:flex;
+  align-items:flex-start;justify-content:space-between}
+#statsCard header h2{font-family:"Archivo";font-weight:900;font-size:22px;margin:0;
+  text-transform:uppercase;letter-spacing:-.5px}
+#statsCard header p{margin:5px 0 0;font-size:11.5px;color:var(--muted);max-width:330px}
+#closeStats{background:transparent;border:1px solid var(--line);color:var(--muted);
+  width:32px;height:32px;border-radius:7px;cursor:pointer;font-size:16px;flex:none}
+#closeStats:hover{border-color:var(--accent);color:var(--accent)}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border-bottom:1px solid var(--line)}
+.kpi{background:var(--panel);padding:15px 16px}
+.kpi .n{font-family:"Archivo";font-weight:800;font-size:25px;line-height:1}
+.kpi .l{font-size:9.5px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-top:4px}
+.sec{padding:20px 24px;border-bottom:1px solid var(--line)}
+.sec h3{margin:0 0 15px;font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--muted)}
+/* year bars */
+.ybars{display:flex;align-items:flex-end;gap:8px;height:130px}
+.ycol{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%}
+.ystack{width:100%;display:flex;flex-direction:column-reverse;flex:1;justify-content:flex-start;
+  border-radius:4px 4px 0 0;overflow:hidden;min-height:2px}
+.ystack span{display:block;width:100%}
+.ystack .s{background:var(--gaz)}.ystack .t{background:var(--elec)}.ystack .o{background:var(--dim)}
+.ylab{font-family:"IBM Plex Mono";font-size:10px;color:var(--muted)}
+.yval{font-family:"Archivo";font-weight:800;font-size:13px}
+/* ranked rows */
+.row{display:grid;grid-template-columns:78px 1fr 34px;align-items:center;gap:10px;margin-bottom:7px}
+.row .rl{font-family:"IBM Plex Mono";font-size:11.5px;color:var(--ink);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.track{height:9px;background:var(--panel2);border-radius:5px;overflow:hidden}
+.track i{display:block;height:100%;border-radius:5px}
+.row .rv{font-family:"IBM Plex Mono";font-size:11px;color:var(--muted);text-align:right}
+.legend{display:flex;gap:14px;margin-top:13px;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted)}
+.legend span{display:flex;align-items:center;gap:5px}
+.legend i{width:9px;height:9px;border-radius:2px;display:block}
+@media(max-width:760px){
+  #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  #side{max-height:38vh}#filters{padding-bottom:20px}
+  #tl{left:8px;right:8px;bottom:8px;padding:10px 12px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div id="brand">
+      <h1>Distributeurs<br><b>sous attaque</b></h1>
+      <p>Attaques de bancomats en Suisse depuis 2019. Chaque point = un fait recensé (presse / communiqués de police).</p>
+    </div>
+    <div id="stats">
+      <div class="stat"><div class="n" id="s-total">—</div><div class="l">Attaques affichées</div></div>
+      <div class="stat"><div class="n" id="s-succ">—</div><div class="l">Taux de réussite</div></div>
+    </div>
+    <button id="statsBtn">📊 Statistiques</button>
+    <div id="filters"></div>
+  </aside>
+  <div id="mapwrap">
+    <div id="map"></div>
+    <div class="approx" id="approx"></div>
+    <div id="statsPanel">
+      <div id="statsCard">
+        <header>
+          <div>
+            <h2>Statistiques</h2>
+            <p id="statsSub">Reflète les filtres actifs · ensemble de la période 2019 →</p>
+          </div>
+          <button id="closeStats">✕</button>
+        </header>
+        <div class="kpis" id="kpis"></div>
+        <div class="sec"><h3>Par année</h3><div class="ybars" id="byYear"></div>
+          <div class="legend"><span><i style="background:var(--gaz)"></i>Réussite</span>
+            <span><i style="background:var(--elec)"></i>Tentative</span>
+            <span><i style="background:var(--dim)"></i>Autre / inconnu</span></div></div>
+        <div class="sec"><h3>Par canton</h3><div id="byCanton"></div></div>
+        <div class="sec"><h3>Par méthode</h3><div id="byMethod"></div></div>
+        <div class="sec"><h3>Par banque</h3><div id="byBank"></div></div>
+      </div>
+    </div>
+    <div id="tl">
+      <div id="tl-top">
+        <button id="play" title="Lecture">▶</button>
+        <div>
+          <div id="tl-date" class="mono">—</div>
+          <div id="tl-info">chargement…</div>
+        </div>
+        <div id="mode">
+          <button data-m="cumul" class="on">Cumulé</button>
+          <button data-m="window">Fenêtre 90j</button>
+        </div>
+      </div>
+      <div id="hist"></div>
+      <input id="slider" type="range" min="0" max="100" value="100">
+      <div id="tl-ticks"></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===================== DATA LOADING =====================
+async function loadData(){
+  if (window.__ATTACKS__) return window.__ATTACKS__;          // mode fichier unique / preview
+  const r = await fetch('data/attacks.json');                  // mode dépôt GitHub
+  if(!r.ok) throw new Error('attacks.json introuvable');
+  return r.json();
+}
+
+// ===================== CONFIG =====================
+const METHODS = {
+  "Explosifs":{c:"--exp",l:"Explosifs"},
+  "Explosion":{c:"--explo",l:"Explosion"},
+  "Gaz":{c:"--gaz",l:"Gaz"},
+  "Manipulation electrique":{c:"--elec",l:"Manipulation électrique"},
+  "Effraction (outils)":{c:"--eff",l:"Effraction (outils)"},
+  "Arrachage (lasso)":{c:"--lasso",l:"Arrachage (lasso)"},
+  "Incendie":{c:"--feu",l:"Incendie"},
+  "Autre":{c:"--autre",l:"Autre"},
+  "Inconnu":{c:"--autre",l:"Inconnu"}
+};
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const methodColor = m => css(METHODS[m] ? METHODS[m].c : "--autre");
+const fmtDate = iso => { const [y,mo,d]=iso.split('-');
+  return ["janv.","févr.","mars","avr.","mai","juin","juil.","août","sept.","oct.","nov.","déc."][+mo-1]+" "+y; };
+const fmtFull = iso => { const [y,mo,d]=iso.split('-'); return `${d}.${mo}.${y}`; };
+
+// ===================== STATE =====================
+let DATA=[], markers=[], map, state={methods:new Set(),success:new Set(),cantons:new Set(),banks:new Set()};
+let monthKeys=[], curIdx=0, mode="cumul", playing=false, timer=null;
+const BANK_TOP=["Raiffeisen","UBS","PostFinance","Banque cantonale","Credit Suisse","Migros","Valiant"];
+const bankBucket = b => { if(!b) return "Autre / inconnu";
+  for(const k of BANK_TOP){ if(b.toLowerCase().includes(k.toLowerCase().split(' ')[0])) return k; }
+  return "Autre / inconnu"; };
+
+// ===================== INIT =====================
+init();
+async function init(){
+  try{ DATA = await loadData(); }
+  catch(e){ document.getElementById('tl-info').textContent="Erreur: "+e.message+" — ouvrez via un serveur ou GitHub Pages."; return; }
+  DATA.forEach(d=>{ d._method=METHODS[d.method]?d.method:(d.method?"Autre":"Inconnu"); d._bank=bankBucket(d.bank); });
+
+  map = L.map('map',{zoomControl:true,minZoom:7,maxZoom:16}).setView([46.8,8.23],8);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
+    attribution:'&copy; OpenStreetMap, &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+
+  buildMonthAxis(); buildFilters(); buildLayer();
+  setupTimeline(); applyAll();
+
+  document.getElementById('statsBtn').onclick=openStats;
+  document.getElementById('closeStats').onclick=closeStats;
+  document.getElementById('statsPanel').addEventListener('click',e=>{
+    if(e.target.id==='statsPanel') closeStats(); });
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeStats(); });
+}
+
+// ===================== TIMELINE AXIS =====================
+function buildMonthAxis(){
+  const dates = DATA.map(d=>d.date).sort();
+  let [y,m]=dates[0].split('-').map(Number);
+  const end = dates[dates.length-1].split('-').map(Number);
+  monthKeys=[];
+  while(y<end[0] || (y===end[0]&&m<=end[1])){ monthKeys.push(`${y}-${String(m).padStart(2,'0')}`);
+    m++; if(m>12){m=1;y++;} }
+  curIdx=monthKeys.length-1;
+}
+function monthIndexOf(iso){ const k=iso.slice(0,7); const i=monthKeys.indexOf(k); return i<0?monthKeys.length-1:i; }
+
+// ===================== FILTERS =====================
+function buildFilters(){
+  const F=document.getElementById('filters');
+  const count = (key,val,extra) => DATA.filter(d=>{
+    const m = key==='_method'?d._method:d[key];
+    return (m===val||val==='__any') && extra(d);
+  }).length;
+
+  // Méthode
+  let h=`<div class="fgroup"><h3>Méthode</h3>`;
+  Object.keys(METHODS).filter((k,i,a)=>a.indexOf(k)===i).filter(k=>DATA.some(d=>d._method===k))
+   .sort((a,b)=>DATA.filter(d=>d._method===b).length-DATA.filter(d=>d._method===a).length)
+   .forEach(k=>{ const n=DATA.filter(d=>d._method===k).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="methods" value="${k}" checked><span class="box"></span>
+        <span class="sw" style="background:${methodColor(k)}"></span>${METHODS[k].l}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+
+  // Résultat
+  h+=`<div class="fgroup"><h3>Résultat</h3>`;
+  ["Réussite","Tentative","Pas clair","Préparation"].filter(s=>DATA.some(d=>d.success===s))
+   .forEach(s=>{ const n=DATA.filter(d=>d.success===s).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="success" value="${s}" checked><span class="box"></span>${s}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+
+  // Banque
+  h+=`<div class="fgroup"><h3>Banque</h3>`;
+  const banks=[...new Set(DATA.map(d=>d._bank))]
+    .sort((a,b)=>DATA.filter(d=>d._bank===b).length-DATA.filter(d=>d._bank===a).length);
+  banks.forEach(b=>{ const n=DATA.filter(d=>d._bank===b).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="banks" value="${b}" checked><span class="box"></span>${b}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+
+  // Canton
+  h+=`<div class="fgroup"><h3>Canton</h3>`;
+  const cantons=[...new Set(DATA.map(d=>d.canton).filter(Boolean))]
+    .sort((a,b)=>DATA.filter(d=>d.canton===b).length-DATA.filter(d=>d.canton===a).length);
+  cantons.forEach(c=>{ const n=DATA.filter(d=>d.canton===c).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="cantons" value="${c}" checked><span class="box"></span>${c}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+  h+=`<button id="reset">Réinitialiser les filtres</button>`;
+  F.innerHTML=h;
+
+  ['methods','success','banks','cantons'].forEach(f=>{
+    document.querySelectorAll(`[data-f="${f}"]:checked`).forEach(i=>state[f].add(i.value)); });
+  F.addEventListener('change',e=>{ const i=e.target; if(!i.dataset.f) return;
+    const set=state[i.dataset.f]; i.checked?set.add(i.value):set.delete(i.value);
+    i.closest('.opt').classList.toggle('off',!i.checked); applyAll(); });
+  document.getElementById('reset').onclick=()=>{
+    F.querySelectorAll('input').forEach(i=>{i.checked=true;i.closest('.opt').classList.remove('off');});
+    ['methods','success','banks','cantons'].forEach(f=>{state[f].clear();
+      document.querySelectorAll(`[data-f="${f}"]`).forEach(i=>state[f].add(i.value));});
+    applyAll(); };
+}
+
+// ===================== MARKERS =====================
+function buildLayer(){
+  markers = DATA.map(d=>{
+    const col=methodColor(d._method), succ=d.success==='Réussite';
+    const approx=d.precision==='canton';
+    const mk=L.circleMarker([d.lat,d.lng],{
+      radius: succ?7:5.5,
+      color: col,
+      weight: succ?0:2,
+      opacity: approx?.55:1,
+      fillColor: col,
+      fillOpacity: succ?(approx?.5:.85):(approx?.08:.12),
+      dashArray: approx?'2,3':null
+    });
+    mk.bindPopup(popup(d),{closeButton:true});
+    mk._d=d; return mk;
+  });
+}
+function popup(d){
+  const succ = d.success==='Réussite';
+  return `<div class="pop-h">${d.town||'?'}${d.canton?` · ${d.canton}`:''}</div>
+    <div class="pop-d">${d.address?d.address+' — ':''}${fmtFull(d.date)}${d.time?' · '+d.time:''}</div>
+    <div class="pop-tags">
+      <span class="tag ${succ?'r':'t'}">${d.success||'?'}</span>
+      <span class="tag" style="color:${methodColor(d._method)}">${METHODS[d._method].l}</span>
+      ${d.bank?`<span class="tag">${d.bank}</span>`:''}
+      ${d.arrest==='Oui'?`<span class="tag">Arrestation</span>`:''}
+    </div>
+    ${d.comment?`<div class="pop-c">${d.comment.slice(0,180)}${d.comment.length>180?'…':''}
+       ${d.url?`<br><a href="${d.url}" target="_blank" rel="noopener">Source ↗</a>`:''}</div>`
+     :(d.url?`<div class="pop-c"><a href="${d.url}" target="_blank" rel="noopener">Source ↗</a></div>`:'')}
+    ${d.precision==='canton'?`<div class="pop-c" style="color:var(--elec)">⚠ Position approximative (centre du canton — coordonnées GPS non disponibles)</div>`:''}`;
+}
+
+// ===================== TIMELINE LOGIC =====================
+function setupTimeline(){
+  const sl=document.getElementById('slider');
+  sl.max=monthKeys.length-1; sl.value=curIdx;
+  sl.oninput=()=>{ curIdx=+sl.value; pause(); applyAll(); };
+  document.getElementById('play').onclick=()=>playing?pause():play();
+  document.querySelectorAll('#mode button').forEach(b=>b.onclick=()=>{
+    mode=b.dataset.m; document.querySelectorAll('#mode button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); applyAll(); });
+  const t=document.getElementById('tl-ticks'); const yrs=[...new Set(monthKeys.map(k=>k.slice(0,4)))];
+  t.innerHTML=yrs.map(y=>`<span>${y}</span>`).join('');
+}
+function play(){ playing=true; document.getElementById('play').textContent='❚❚';
+  if(curIdx>=monthKeys.length-1) curIdx=0;
+  timer=setInterval(()=>{ curIdx++; document.getElementById('slider').value=curIdx;
+    applyAll(); if(curIdx>=monthKeys.length-1) pause(); },420); }
+function pause(){ playing=false; clearInterval(timer); document.getElementById('play').textContent='▶'; }
+
+// ===================== APPLY (filters + time) =====================
+function applyAll(){
+  const cur=monthKeys[curIdx];
+  document.getElementById('tl-date').textContent=fmtDate(cur+'-01');
+  let shownNow=0, succNow=0, total=0;
+  const histCount={}; monthKeys.forEach(k=>histCount[k]=0);
+
+  markers.forEach(mk=>{
+    const d=mk._d;
+    const passFilter = state.methods.has(d._method) && state.success.has(d.success)
+      && state.banks.has(d._bank) && (!d.canton || state.cantons.has(d.canton));
+    if(passFilter){ total++; histCount[d.date.slice(0,7)]++; }
+    const mi=monthIndexOf(d.date);
+    let inTime;
+    if(mode==='cumul') inTime = mi<=curIdx;
+    else inTime = mi<=curIdx && mi>curIdx-3;        // fenêtre ~90 j (3 mois)
+    const show = passFilter && inTime;
+    if(show){ if(!map.hasLayer(mk)) mk.addTo(map); shownNow++;
+      if(d.success==='Réussite') succNow++; }
+    else if(map.hasLayer(mk)) map.removeLayer(mk);
+  });
+
+  document.getElementById('s-total').textContent=shownNow;
+  document.getElementById('s-succ').textContent= shownNow? Math.round(succNow/shownNow*100)+'%':'—';
+  const approxN=markers.filter(mk=>map.hasLayer(mk)&&mk._d.precision==='canton').length;
+  document.getElementById('approx').innerHTML= approxN
+    ? `${shownNow} attaques · <b>${approxN}</b> positionnées au niveau du canton`
+    : `${shownNow} attaques géolocalisées précisément`;
+  document.getElementById('tl-info').textContent =
+    `${shownNow} / ${total} attaques · ${mode==='cumul'?'depuis 2019':'fenêtre 90 jours'}`;
+  drawHist(histCount);
+  if(document.getElementById('statsPanel').classList.contains('open')) renderStats();
+}
+function drawHist(hc){
+  const max=Math.max(1,...Object.values(hc));
+  document.getElementById('hist').innerHTML=monthKeys.map((k,i)=>
+    `<div class="bar ${i<=curIdx?'act':''}" style="height:${Math.max(2,hc[k]/max*34)}px" title="${k}: ${hc[k]}"></div>`
+  ).join('');
+}
+
+// ===================== STATS PANEL =====================
+function getFiltered(){
+  return DATA.filter(d=> state.methods.has(d._method) && state.success.has(d.success)
+    && state.banks.has(d._bank) && (!d.canton || state.cantons.has(d.canton)));
+}
+function openStats(){ renderStats(); document.getElementById('statsPanel').classList.add('open'); }
+function closeStats(){ document.getElementById('statsPanel').classList.remove('open'); }
+
+function rankRows(el,counts,colorFn,total){
+  const max=Math.max(1,...counts.map(c=>c[1]));
+  el.innerHTML=counts.map(([k,n])=>`<div class="row">
+    <span class="rl">${k}</span>
+    <span class="track"><i style="width:${n/max*100}%;background:${colorFn(k)}"></i></span>
+    <span class="rv">${n}</span></div>`).join('') || '<p style="color:var(--dim);font-size:12px">Aucune donnée</p>';
+}
+
+function renderStats(){
+  const F=getFiltered();
+  const succ=F.filter(d=>d.success==='Réussite').length;
+  const tent=F.filter(d=>d.success==='Tentative').length;
+  const explo=F.filter(d=>d._method==='Explosifs'||d._method==='Explosion').length;
+  const arr=F.filter(d=>d.arrest==='Oui').length;
+  const kpi=[[F.length,'Attaques'],[F.length?Math.round(succ/F.length*100)+'%':'—','Réussite'],
+    [F.length?Math.round(explo/F.length*100)+'%':'—','À l\'explosif'],[arr,'Arrestations*']];
+  document.getElementById('kpis').innerHTML=kpi.map(k=>
+    `<div class="kpi"><div class="n">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
+
+  // par année (empilé)
+  const years=[...new Set(F.map(d=>d.year))].sort();
+  const ymax=Math.max(1,...years.map(y=>F.filter(d=>d.year===y).length));
+  document.getElementById('byYear').innerHTML=years.map(y=>{
+    const g=F.filter(d=>d.year===y);
+    const s=g.filter(d=>d.success==='Réussite').length;
+    const t=g.filter(d=>d.success==='Tentative').length;
+    const o=g.length-s-t;
+    const h=g.length/ymax*100;
+    const seg=(cls,v)=>v?`<span class="${cls}" style="height:${v/g.length*100}%"></span>`:'';
+    return `<div class="ycol"><div class="yval">${g.length}</div>
+      <div class="ystack" style="flex:0 0 ${h}%">${seg('s',s)}${seg('t',t)}${seg('o',o)}</div>
+      <div class="ylab">${y}</div></div>`;
+  }).join('');
+
+  // par canton / méthode / banque
+  const tally=key=>{const m={};F.forEach(d=>{const v=key(d);if(v)m[v]=(m[v]||0)+1;});
+    return Object.entries(m).sort((a,b)=>b[1]-a[1]);};
+  rankRows(document.getElementById('byCanton'), tally(d=>d.canton), ()=>css('--accent'));
+  rankRows(document.getElementById('byMethod'),
+    tally(d=>d._method).map(([k,n])=>[METHODS[k].l,n,k]).map(([l,n])=>[l,n]),
+    l=>{const k=Object.keys(METHODS).find(x=>METHODS[x].l===l);return methodColor(k);});
+  rankRows(document.getElementById('byBank'), tally(d=>d._bank), ()=>css('--eff'));
+}
+</script>
+</body>
+</html>

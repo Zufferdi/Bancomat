@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Attaques de DAB en Suisse · 2019 →</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800;900&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -152,6 +154,23 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
 .legend{display:flex;gap:14px;margin-top:13px;font-family:"IBM Plex Mono";font-size:10.5px;color:var(--muted)}
 .legend span{display:flex;align-items:center;gap:5px}
 .legend i{width:9px;height:9px;border-radius:2px;display:block}
+
+/* clusters */
+.cl{background:rgba(255,77,46,.18);border:1.5px solid var(--accent);border-radius:50%;
+  display:grid;place-items:center;color:#fff;font-family:"IBM Plex Mono";font-weight:600;
+  box-shadow:0 0 0 4px rgba(255,77,46,.10)}
+.cl b{font-size:12px}
+.marker-cluster,.marker-cluster div{background:transparent!important}
+/* clock + day */
+.clockwrap{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.clockwrap svg{flex:none}
+.clocknote{font-size:12px;color:var(--muted);line-height:1.6;max-width:200px}
+.clocknote b{color:var(--accent);font-family:"Archivo";font-size:17px}
+.dbars{display:flex;align-items:flex-end;gap:7px;height:96px;margin-bottom:8px}
+.dcol{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;height:100%;justify-content:flex-end}
+.dbar{width:100%;background:var(--accent);border-radius:3px 3px 0 0;min-height:2px}
+.dlab{font-family:"IBM Plex Mono";font-size:9.5px;color:var(--muted)}
+.dval{font-family:"Archivo";font-weight:800;font-size:12px}
 @media(max-width:760px){
   #app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
   #side{max-height:38vh}#filters{padding-bottom:20px}
@@ -190,6 +209,10 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
           <div class="legend"><span><i style="background:var(--gaz)"></i>Réussite</span>
             <span><i style="background:var(--elec)"></i>Tentative</span>
             <span><i style="background:var(--dim)"></i>Autre / inconnu</span></div></div>
+        <div class="sec"><h3>À quelle heure</h3>
+          <div class="clockwrap"><div id="clock"></div>
+            <div class="clocknote" id="clockNote"></div></div></div>
+        <div class="sec"><h3>Jour de la semaine</h3><div class="dbars" id="byDay"></div></div>
         <div class="sec"><h3>Par canton</h3><div id="byCanton"></div></div>
         <div class="sec"><h3>Par méthode</h3><div id="byMethod"></div></div>
         <div class="sec"><h3>Par banque</h3><div id="byBank"></div></div>
@@ -215,6 +238,7 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 // ===================== DATA LOADING =====================
 async function loadData(){
@@ -243,23 +267,35 @@ const fmtDate = iso => { const [y,mo,d]=iso.split('-');
 const fmtFull = iso => { const [y,mo,d]=iso.split('-'); return `${d}.${mo}.${y}`; };
 
 // ===================== STATE =====================
-let DATA=[], markers=[], map, state={methods:new Set(),success:new Set(),cantons:new Set(),banks:new Set()};
+let DATA=[], markers=[], map, cluster, state={methods:new Set(),success:new Set(),cantons:new Set(),banks:new Set(),zones:new Set(),cross:new Set()};
 let monthKeys=[], curIdx=0, mode="cumul", playing=false, timer=null;
 const BANK_TOP=["Raiffeisen","UBS","PostFinance","Banque cantonale","Credit Suisse","Migros","Valiant"];
 const bankBucket = b => { if(!b) return "Autre / inconnu";
   for(const k of BANK_TOP){ if(b.toLowerCase().includes(k.toLowerCase().split(' ')[0])) return k; }
   return "Autre / inconnu"; };
+const NP="(non précisé)";
+const DAYS=["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
 
 // ===================== INIT =====================
 init();
 async function init(){
   try{ DATA = await loadData(); }
   catch(e){ document.getElementById('tl-info').textContent="Erreur: "+e.message+" — ouvrez via un serveur ou GitHub Pages."; return; }
-  DATA.forEach(d=>{ d._method=METHODS[d.method]?d.method:(d.method?"Autre":"Inconnu"); d._bank=bankBucket(d.bank); });
+  DATA.forEach(d=>{ d._method=METHODS[d.method]?d.method:(d.method?"Autre":"Inconnu"); d._bank=bankBucket(d.bank);
+    d._zone=d.zone||NP; d._cross=d.cross||NP; d._succ=d.success||NP;
+    d._hour=d.time?parseInt(d.time.split(':')[0],10):null; });
 
   map = L.map('map',{zoomControl:true,minZoom:7,maxZoom:16}).setView([46.8,8.23],8);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{
     attribution:'&copy; OpenStreetMap, &copy; CARTO',subdomains:'abcd',maxZoom:19}).addTo(map);
+
+  cluster = L.markerClusterGroup({
+    maxClusterRadius:48, disableClusteringAtZoom:12, spiderfyOnMaxZoom:true, chunkedLoading:true,
+    showCoverageOnHover:false,
+    iconCreateFunction:c=>{ const n=c.getChildCount(); const s=n<10?34:n<30?42:52;
+      return L.divIcon({html:`<div class="cl" style="width:${s}px;height:${s}px"><b>${n}</b></div>`,
+        className:'', iconSize:[s,s]}); }
+  }).addTo(map);
 
   buildMonthAxis(); buildFilters(); buildLayer();
   setupTimeline(); applyAll();
@@ -302,9 +338,23 @@ function buildFilters(){
 
   // Résultat
   h+=`<div class="fgroup"><h3>Résultat</h3>`;
-  ["Réussite","Tentative","Pas clair","Préparation"].filter(s=>DATA.some(d=>d.success===s))
-   .forEach(s=>{ const n=DATA.filter(d=>d.success===s).length;
+  [...new Set(DATA.map(d=>d._succ))].sort((a,b)=>DATA.filter(d=>d._succ===b).length-DATA.filter(d=>d._succ===a).length)
+   .forEach(s=>{ const n=DATA.filter(d=>d._succ===s).length;
      h+=`<label class="opt"><input type="checkbox" data-f="success" value="${s}" checked><span class="box"></span>${s}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+
+  // Zone
+  h+=`<div class="fgroup"><h3>Zone</h3>`;
+  [...new Set(DATA.map(d=>d._zone))].sort((a,b)=>DATA.filter(d=>d._zone===b).length-DATA.filter(d=>d._zone===a).length)
+   .forEach(z=>{ const n=DATA.filter(d=>d._zone===z).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="zones" value="${z}" checked><span class="box"></span>${z}<span class="cnt">${n}</span></label>`; });
+  h+=`</div>`;
+
+  // Transfrontalier
+  h+=`<div class="fgroup"><h3>Transfrontalier</h3>`;
+  ["Oui","Possible","Non","Inconnu",NP].filter(c=>DATA.some(d=>d._cross===c))
+   .forEach(c=>{ const n=DATA.filter(d=>d._cross===c).length;
+     h+=`<label class="opt"><input type="checkbox" data-f="cross" value="${c}" checked><span class="box"></span>${c}<span class="cnt">${n}</span></label>`; });
   h+=`</div>`;
 
   // Banque
@@ -325,14 +375,14 @@ function buildFilters(){
   h+=`<button id="reset">Réinitialiser les filtres</button>`;
   F.innerHTML=h;
 
-  ['methods','success','banks','cantons'].forEach(f=>{
+  ['methods','success','banks','cantons','zones','cross'].forEach(f=>{
     document.querySelectorAll(`[data-f="${f}"]:checked`).forEach(i=>state[f].add(i.value)); });
   F.addEventListener('change',e=>{ const i=e.target; if(!i.dataset.f) return;
     const set=state[i.dataset.f]; i.checked?set.add(i.value):set.delete(i.value);
     i.closest('.opt').classList.toggle('off',!i.checked); applyAll(); });
   document.getElementById('reset').onclick=()=>{
     F.querySelectorAll('input').forEach(i=>{i.checked=true;i.closest('.opt').classList.remove('off');});
-    ['methods','success','banks','cantons'].forEach(f=>{state[f].clear();
+    ['methods','success','banks','cantons','zones','cross'].forEach(f=>{state[f].clear();
       document.querySelectorAll(`[data-f="${f}"]`).forEach(i=>state[f].add(i.value));});
     applyAll(); };
 }
@@ -393,27 +443,28 @@ function pause(){ playing=false; clearInterval(timer); document.getElementById('
 function applyAll(){
   const cur=monthKeys[curIdx];
   document.getElementById('tl-date').textContent=fmtDate(cur+'-01');
-  let shownNow=0, succNow=0, total=0;
+  let shownNow=0, succNow=0, total=0, approxN=0;
   const histCount={}; monthKeys.forEach(k=>histCount[k]=0);
+  const toShow=[];
 
   markers.forEach(mk=>{
     const d=mk._d;
-    const passFilter = state.methods.has(d._method) && state.success.has(d.success)
-      && state.banks.has(d._bank) && (!d.canton || state.cantons.has(d.canton));
+    const passFilter = state.methods.has(d._method) && state.success.has(d._succ)
+      && state.banks.has(d._bank) && (!d.canton || state.cantons.has(d.canton))
+      && state.zones.has(d._zone) && state.cross.has(d._cross);
     if(passFilter){ total++; histCount[d.date.slice(0,7)]++; }
     const mi=monthIndexOf(d.date);
-    let inTime;
-    if(mode==='cumul') inTime = mi<=curIdx;
-    else inTime = mi<=curIdx && mi>curIdx-3;        // fenêtre ~90 j (3 mois)
-    const show = passFilter && inTime;
-    if(show){ if(!map.hasLayer(mk)) mk.addTo(map); shownNow++;
-      if(d.success==='Réussite') succNow++; }
-    else if(map.hasLayer(mk)) map.removeLayer(mk);
+    const inTime = mode==='cumul' ? mi<=curIdx : (mi<=curIdx && mi>curIdx-3);
+    if(passFilter && inTime){ toShow.push(mk); shownNow++;
+      if(d.success==='Réussite') succNow++;
+      if(d.precision==='canton') approxN++; }
   });
+
+  cluster.clearLayers();
+  cluster.addLayers(toShow);
 
   document.getElementById('s-total').textContent=shownNow;
   document.getElementById('s-succ').textContent= shownNow? Math.round(succNow/shownNow*100)+'%':'—';
-  const approxN=markers.filter(mk=>map.hasLayer(mk)&&mk._d.precision==='canton').length;
   document.getElementById('approx').innerHTML= approxN
     ? `${shownNow} attaques · <b>${approxN}</b> positionnées au niveau du canton`
     : `${shownNow} attaques géolocalisées précisément`;
@@ -455,6 +506,39 @@ function renderStats(){
     [F.length?Math.round(explo/F.length*100)+'%':'—','À l\'explosif'],[arr,'Arrestations*']];
   document.getElementById('kpis').innerHTML=kpi.map(k=>
     `<div class="kpi"><div class="n">${k[0]}</div><div class="l">${k[1]}</div></div>`).join('');
+
+  // ---- horloge : à quelle heure ----
+  const hours=Array(24).fill(0); let withTime=0;
+  F.forEach(d=>{ if(d._hour!=null){ hours[d._hour]++; withTime++; } });
+  const hmax=Math.max(1,...hours), peak=hours.indexOf(hmax);
+  const cx=72,cy=72,r0=22,r1=64;
+  let spokes='';
+  for(let hh=0;hh<24;hh++){
+    const a=(hh/24)*2*Math.PI - Math.PI/2;
+    const len=r0+(hours[hh]/hmax)*(r1-r0);
+    const x1=cx+Math.cos(a)*r0, y1=cy+Math.sin(a)*r0;
+    const x2=cx+Math.cos(a)*len, y2=cy+Math.sin(a)*len;
+    const lit=hours[hh]>0;
+    spokes+=`<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${lit?css('--accent'):css('--line')}" stroke-width="4" stroke-linecap="round" opacity="${lit?.95:.5}"/>`;
+  }
+  let labels='';
+  [0,6,12,18].forEach(hh=>{ const a=(hh/24)*2*Math.PI-Math.PI/2;
+    labels+=`<text x="${cx+Math.cos(a)*(r1+9)}" y="${cy+Math.sin(a)*(r1+9)+3}" fill="${css('--dim')}" font-size="9" font-family="IBM Plex Mono" text-anchor="middle">${hh}h</text>`; });
+  document.getElementById('clock').innerHTML=
+    `<svg width="160" height="160" viewBox="-8 -8 160 160">
+       <circle cx="${cx}" cy="${cy}" r="${r0-3}" fill="none" stroke="${css('--line')}" stroke-width="1"/>
+       ${spokes}${labels}</svg>`;
+  const night=hours.slice(1,5).reduce((a,b)=>a+b,0);
+  document.getElementById('clockNote').innerHTML= withTime
+    ? `<b>${Math.round(night/withTime*100)}%</b> des attaques horodatées ont lieu entre 1h et 4h du matin. Pic à <b>${peak}h</b>.<br><span style="color:var(--dim)">Sur ${withTime} faits avec heure connue.</span>`
+    : `Aucune heure renseignée pour cette sélection.`;
+
+  // ---- jour de la semaine ----
+  const dmax=Math.max(1,...DAYS.map(j=>F.filter(d=>d.day===j).length));
+  document.getElementById('byDay').innerHTML=DAYS.map(j=>{ const n=F.filter(d=>d.day===j).length;
+    return `<div class="dcol"><div class="dval">${n}</div>
+      <div class="dbar" style="height:${n/dmax*72}px"></div>
+      <div class="dlab">${j.slice(0,3)}</div></div>`; }).join('');
 
   // par année (empilé)
   const years=[...new Set(F.map(d=>d.year))].sort();

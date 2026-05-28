@@ -1211,30 +1211,6 @@ html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
   "url": "https://kapo.tg.ch/news/news-detailseite.html/2149/news/43095/newsarchive/1"
  },
  {
-  "id": 203,
-  "date": "2020-01-13",
-  "year": 2020,
-  "time": null,
-  "bank": "TRAVELEX Switzerland AG",
-  "address": null,
-  "npa": null,
-  "town": null,
-  "canton": null,
-  "region": null,
-  "zone": null,
-  "day": "Lundi",
-  "cross": null,
-  "lat": null,
-  "lng": null,
-  "precision": null,
-  "success": "Réussite",
-  "method": "Manipulation electrique",
-  "type": null,
-  "arrest": null,
-  "comment": null,
-  "url": null
- },
- {
   "id": 204,
   "date": "2020-01-15",
   "year": 2020,
@@ -8335,7 +8311,7 @@ function buildFilters(){
 
 // ===================== MARKERS =====================
 function buildLayer(){
-  markers = DATA.map(d=>{
+  markers = DATA.filter(d=>d.lat!=null && d.lng!=null).map(d=>{
     const col=methodColor(d._method), succ=d.success==='Réussite';
     const approx=d.precision==='canton';
     const mk=L.circleMarker([d.lat,d.lng],{

@@ -107,4 +107,58 @@ def main():
             name_lu.setdefault(str(r["WHERE"]).strip().lower(), r["geo"])
 
     records, counts = [], {"exact": 0, "npa": 0, "name": 0, "online": 0, "canton": 0, "none": 0}
-    for _, r in df.iterrows
+    for _, r in df.iterrows():
+        lat = lng = None
+        prec = None
+        if r["geo"]:
+            (lat, lng), prec = r["geo"], "exact"
+        elif pd.notna(r["NPA"]) and int(r["NPA"]) in npa_lu:
+            (lat, lng), prec = npa_lu[int(r["NPA"])], "npa"
+        elif pd.notna(r["WHERE"]) and str(r["WHERE"]).strip().lower() in name_lu:
+            (lat, lng), prec = name_lu[str(r["WHERE"]).strip().lower()], "name"
+        elif args.geocode and (clean(r["WHERE"]) or pd.notna(r["NPA"])):
+            npa = str(int(r["NPA"])) if pd.notna(r["NPA"]) else None
+            g = geocode_online(npa, clean(r["WHERE"]), clean(r["KTN"]))
+            time.sleep(1)  # politesse Nominatim
+            if g:
+                (lat, lng), prec = g, "online"
+        if lat is None and clean(r["KTN"]) in CANTON:
+            (lat, lng), prec = CANTON[clean(r["KTN"])], "canton"
+
+        date = parse_date(r)
+        if date is None or lat is None:
+            counts["none"] += 1
+            continue
+        counts[prec or "none"] += 1
+
+        records.append({
+            "id": int(r["ID"]) if pd.notna(r["ID"]) else None,
+            "date": date,
+            "year": int(date[:4]),
+            "time": parse_time(r["TIME"]),
+            "bank": clean(r["WHO"]),
+            "address": clean(r["Part_location"]),
+            "npa": str(int(r["NPA"])) if pd.notna(r["NPA"]) else None,
+            "town": clean(r["WHERE"]),
+            "canton": clean(r["KTN"]),
+            "region": clean(r["REGION"]),
+            "zone": clean(r["ZONE"]),
+            "day": clean(r["DAY"]),
+            "cross": clean(r["cross_border"]),
+            "lat": lat, "lng": lng, "precision": prec,
+            "success": clean(r["SUCCESS"]),
+            "method": clean(r["HOW"]),
+            "type": clean(r["TYPE"]),
+            "arrest": clean(r["ARREST"]),
+            "comment": clean(r["Comment"]) or clean(r["Détails"]),
+            "url": best_url(r),
+        })
+
+    records.sort(key=lambda x: x["date"])
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps(records, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(records)} attaques ecrites dans {OUT}")
+    print("precision:", counts)
+
+if __name__ == "__main__":
+    main()
